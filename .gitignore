@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local database and transaction files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Credentials
+.env
+.env.*
+.streamlit/secrets.toml
+
+# Local backup files
+app_backup.py
+*-backup*/
