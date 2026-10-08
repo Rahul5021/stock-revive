@@ -54,11 +54,19 @@ with connect() as connection:
             s.date,
             s.sku,
             i.style_id,
+            i.category,
             i.size,
             s.quantity,
             s.unit_sale_price_pence / 100.0 AS unit_sale_price_gbp,
+            s.unit_cost_pence / 100.0 AS unit_cost_gbp,
             (s.quantity * s.unit_sale_price_pence) / 100.0
-                AS revenue_gbp
+                AS revenue_gbp,
+            (s.quantity * s.unit_cost_pence) / 100.0
+                AS cost_of_goods_gbp,
+            (
+                s.quantity *
+                (s.unit_sale_price_pence - s.unit_cost_pence)
+            ) / 100.0 AS gross_profit_gbp
         FROM sales AS s
         JOIN inventory AS i ON s.sku = i.sku
         ORDER BY s.date, s.sale_id
@@ -244,11 +252,12 @@ confirmation = st.session_state.pop("sale_confirmation", None)
 if confirmation:
     st.success(confirmation)
 
-tab_overview, tab_sizes, tab_discount, tab_export = st.tabs([
+tab_overview, tab_sizes, tab_discount, tab_export, tab_sales = st.tabs([
     "Overview",
     "Size Alerts",
     "Discount Calculator",
     "Review Export",
+    "Sales Analytics",
 ])
 
 with tab_overview:
@@ -706,3 +715,159 @@ with tab_sizes:
             use_container_width=True,
             height=450,
         ) 
+
+with tab_sales:
+    st.subheader("Sales Analytics")
+    st.caption(
+        "Revenue and gross profit from recorded transactions. "
+        "The original sales history is synthetic."
+    )
+
+    if sales.empty:
+        st.info("No sales have been recorded.")
+    else:
+        first_date = sales["date"].min().date()
+        last_date = max(
+            sales["date"].max().date(),
+            snapshot_date.date(),
+        )
+
+        default_start = max(
+            first_date,
+            last_date - pd.Timedelta(days=29),
+        )
+
+        selected_dates = st.date_input(
+            "Select a date range",
+            value=(default_start, last_date),
+            min_value=first_date,
+            max_value=last_date,
+            key="sales_date_range",
+        )
+
+        if len(selected_dates) != 2:
+            st.info("Select both a start date and an end date.")
+        else:
+            start_date, end_date = selected_dates
+
+            period_sales = sales[
+                sales["date"].between(
+                    pd.Timestamp(start_date),
+                    pd.Timestamp(end_date),
+                )
+            ].copy()
+
+            pairs_sold = int(period_sales["quantity"].sum())
+            revenue = period_sales["revenue_gbp"].sum()
+            cost_of_goods = period_sales["cost_of_goods_gbp"].sum()
+            gross_profit = period_sales["gross_profit_gbp"].sum()
+
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Pairs sold", f"{pairs_sold:,}")
+            col2.metric("Revenue", f"£{revenue:,.2f}")
+            col3.metric("Cost of goods sold", f"£{cost_of_goods:,.2f}")
+            col4.metric("Gross profit", f"£{gross_profit:,.2f}")
+
+            if revenue > 0:
+                st.caption(
+                    f"Gross margin: {gross_profit / revenue:.1%}. "
+                    "Gross profit excludes VAT adjustments, fees, "
+                    "overheads and returns."
+                )
+            else:
+                st.caption(
+                    "Gross margin is undefined when revenue is zero. "
+                    "Gross profit excludes VAT adjustments, fees, "
+                    "overheads and returns."
+                )
+
+            if period_sales.empty:
+                st.info("No sales in this date range.")
+            else:
+                st.markdown("**Daily revenue and gross profit**")
+
+                daily_sales = period_sales.groupby("date")[[
+                    "revenue_gbp",
+                    "gross_profit_gbp",
+                ]].sum()
+
+                # Include zero-sales days within the chosen range.
+                daily_sales = daily_sales.reindex(
+                    pd.date_range(start_date, end_date, freq="D"),
+                    fill_value=0,
+                )
+                daily_sales.index.name = "Date"
+
+                daily_sales = daily_sales.rename(columns={
+                    "revenue_gbp": "Revenue (£)",
+                    "gross_profit_gbp": "Gross profit (£)",
+                })
+
+                if len(daily_sales) == 1:
+                    st.bar_chart(daily_sales)
+                else:
+                    st.line_chart(daily_sales)
+
+                st.markdown("**Transaction history**")
+
+                history = period_sales.sort_values(
+                    ["date", "sale_id"],
+                    ascending=[False, False],
+                )[[
+                    "sale_id",
+                    "date",
+                    "style_id",
+                    "category",
+                    "size",
+                    "quantity",
+                    "unit_sale_price_gbp",
+                    "unit_cost_gbp",
+                    "revenue_gbp",
+                    "cost_of_goods_gbp",
+                    "gross_profit_gbp",
+                ]].rename(columns={
+                    "sale_id": "Sale ID",
+                    "date": "Date",
+                    "style_id": "Style",
+                    "category": "Category",
+                    "size": "Size",
+                    "quantity": "Pairs",
+                    "unit_sale_price_gbp": "Price per pair (£)",
+                    "unit_cost_gbp": "Cost per pair (£)",
+                    "revenue_gbp": "Revenue (£)",
+                    "cost_of_goods_gbp": "Cost of goods (£)",
+                    "gross_profit_gbp": "Gross profit (£)",
+                })
+
+                money_columns = [
+                    "Price per pair (£)",
+                    "Cost per pair (£)",
+                    "Revenue (£)",
+                    "Cost of goods (£)",
+                    "Gross profit (£)",
+                ]
+
+                st.dataframe(
+                    history,
+                    hide_index=True,
+                    use_container_width=True,
+                    column_config={
+                        column: st.column_config.NumberColumn(
+                            format="£%.2f"
+                        )
+                        for column in money_columns
+                    },
+                )
+
+                st.download_button(
+                    "Download filtered sales as CSV",
+                    data=history.to_csv(
+                        index=False,
+                        float_format="%.2f",
+                    ).encode("utf-8-sig"),
+                    file_name=(
+                        f"sales_{start_date}_{end_date}.csv"
+                    ),
+                    mime="text/csv",
+                    key="download_sales_history",
+                )

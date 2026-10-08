@@ -26,6 +26,8 @@ family's footwear business in Nepal.
 - SQLite storage with a one-time synthetic data import
 - Sale recording that updates inventory and sales together
 - Validation that prevents selling more stock than available
+- Sales analytics with date filtering, daily revenue and gross-profit
+  trends, transaction history and CSV export
 
 ## Data
 
