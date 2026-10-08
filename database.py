@@ -1,6 +1,7 @@
 import csv
 import sqlite3
 from datetime import date
+from contextlib import closing
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
@@ -33,7 +34,7 @@ def connect():
 def initialise_database():
     DATA_DIR.mkdir(exist_ok=True)
 
-    with connect() as connection:
+    with closing(connect()) as connection, connection:
         connection.executescript("""
             CREATE TABLE IF NOT EXISTS inventory (
                 sku TEXT PRIMARY KEY,
@@ -107,6 +108,7 @@ def initialise_database():
         cost_by_sku = {}
         initial_by_sku = {}
         remaining_by_sku = {}
+        received_by_sku = {}
 
         for row in inventory_rows:
             sku = row["sku"]
@@ -138,6 +140,7 @@ def initialise_database():
             cost_by_sku[sku] = cost
             initial_by_sku[sku] = initial
             remaining_by_sku[sku] = remaining
+            received_by_sku[sku] = received
 
         sold_by_sku = {}
 
@@ -146,6 +149,14 @@ def initialise_database():
             sale_date = date.fromisoformat(row["date"])
             quantity = int(row["quantity"])
 
+            if sku not in received_by_sku:
+                raise ValueError(f"Unknown SKU in sales CSV: {sku}.")
+
+            if sale_date < received_by_sku[sku]:
+                raise ValueError(
+                    f"Sale date precedes stock arrival for {sku}."
+                )
+            
             if sale_date > snapshot_date:
                 raise ValueError("Sales cannot follow the snapshot date.")
 
@@ -192,7 +203,7 @@ def record_sale(sku, quantity, unit_price, sale_date):
     parsed_date = date.fromisoformat(str(sale_date))
     price_pence = to_pence(unit_price)
 
-    with connect() as connection:
+    with closing(connect()) as connection, connection:
         connection.execute("BEGIN IMMEDIATE")
 
         item = connection.execute(
@@ -260,7 +271,7 @@ def record_sale(sku, quantity, unit_price, sale_date):
 if __name__ == "__main__":
     initialise_database()
 
-    with connect() as connection:
+    with closing(connect()) as connection, connection:
         inventory_count = connection.execute(
             "SELECT COUNT(*) FROM inventory"
         ).fetchone()[0]

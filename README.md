@@ -88,6 +88,9 @@ does not reset an existing database.
 - Store monetary amounts as integer pence in SQLite.
 - Record a sale and reduce stock within one database transaction.
 - Use parameterised SQL for transaction inputs.
+- Explicitly close SQLite connections after each operation.
+- Validate imported sale dates against stock arrival and the
+  snapshot date; roll back the entire import if validation fails.
 
 ## Validation performed
 
@@ -100,6 +103,14 @@ does not reset an existing database.
 - Confirmed all three suggested actions appear in the review CSV:
   60 display/customer-interest reviews, 37 sales-pace/price reviews
   and 15 clearance reviews in the tested snapshot.
+- Automated test confirms sales before stock arrival are rejected
+  during CSV import, with no partial data retained.
+
+## Run tests
+
+    ```python -m unittest discover -v```
+
+Tests use temporary databases and do not modify the demo database.
 
 ## Limitations
 
@@ -115,9 +126,9 @@ does not reset an existing database.
 
 ## Next steps
 
-1. Review and simplify the code, and document the alert rules.
-2. Add focused automated tests for sale validation, stock updates
-   and review-action rules.
+1. Simplify the dashboard code and document the alert rules.
+2. Expand automated tests to cover sale recording, overselling,
+   transaction rollback and review-action boundaries.
 3. Prepare screenshots and a short portfolio case study covering
    the business problem, SQL design, analysis and limitations.
 4. Add incoming stock with appropriate batch and cost handling.

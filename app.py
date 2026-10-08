@@ -2,6 +2,7 @@ from pathlib import Path
 from database import initialise_database, connect, record_sale
 import pandas as pd
 import streamlit as st
+from contextlib import closing
 
 st.set_page_config(
     page_title="Stock Revive",
@@ -19,7 +20,7 @@ st.caption(
 
 initialise_database()
 
-with connect() as connection:
+with closing(connect()) as connection, connection:
     inventory = pd.read_sql_query("""
         SELECT
             m.value AS snapshot_date,
