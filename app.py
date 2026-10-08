@@ -405,6 +405,27 @@ with tab_sizes:
 
     size_alerts = size_stock[size_stock["quiet_size"]].copy()
 
+    size_alerts["sizes_left"] = (
+        size_alerts["style_id"].map(styles["sizes_left"])
+    )
+
+    def suggest_review(row):
+        old = row["age_days"] >= old_threshold
+        fragmented = row["sizes_left"] <= fragmented_threshold
+        long_inactive = row["days_without_sale"] >= max(
+            60, quiet_threshold
+        )
+
+        if old and fragmented and long_inactive:
+            return "Clearance review"
+        if old:
+            return "Review sales pace and price"
+        return "Check display and customer interest"
+
+    size_alerts["suggested_action"] = size_alerts.apply(
+        suggest_review, axis=1
+    )
+
     size_alerts["alert_reason"] = size_alerts.apply(
         lambda row: (
             f"No sales since arrival "
@@ -466,6 +487,7 @@ with tab_sizes:
             "sales_last_30_days",
             "stock_cost",
             "alert_reason",
+            "suggested_action",
         ]].rename(columns={
             "style_id": "Style",
             "category": "Category",
@@ -475,6 +497,7 @@ with tab_sizes:
             "sales_last_30_days": "Sold in 30 days",
             "stock_cost": "Stock cost (£)",
             "alert_reason": "Why flagged",
+            "suggested_action": "Suggested action",
         })
 
         st.dataframe(
@@ -507,16 +530,9 @@ with tab_export:
             "sales_last_30_days",
             "stock_cost",
             "alert_reason",
+            "suggested_action",
         ]].copy()
 
-        review_list["suggested_action"] = review_list.apply(
-            lambda row: (
-                "Check display visibility and customer interest"
-                if row["age_days"] < old_threshold
-                else "Review display, price and clearance options"
-            ),
-            axis=1,
-        )
 
         # Blank fields for the owner to record decisions and outcomes.
         review_list["chosen_action"] = ""
@@ -871,3 +887,66 @@ with tab_sales:
                     mime="text/csv",
                     key="download_sales_history",
                 )
+
+with tab_sizes:
+    st.divider()
+
+    with st.expander("Demo diagnostics: alerts by simulated scenario"):
+        st.caption(
+            "Uses simulation labels only to inspect alert behaviour. "
+            "These labels are not verified dead-stock outcomes, "
+            "so this is not an accuracy score."
+        )
+
+        diagnostic = size_stock.copy()
+        diagnostic["flagged_pairs"] = (
+            diagnostic["quantity_remaining"]
+            .where(diagnostic["quiet_size"], 0)
+        )
+        diagnostic["flagged_cost"] = (
+            diagnostic["stock_cost"]
+            .where(diagnostic["quiet_size"], 0)
+        )
+
+        summary = diagnostic.groupby("simulation_scenario").agg(
+            stocked_sizes=("sku", "count"),
+            flagged_sizes=("quiet_size", "sum"),
+            pairs_remaining=("quantity_remaining", "sum"),
+            pairs_flagged=("flagged_pairs", "sum"),
+            purchase_cost_flagged=("flagged_cost", "sum"),
+        )
+
+        summary["sizes_flagged_percent"] = (
+            summary["flagged_sizes"] / summary["stocked_sizes"] * 100
+        )
+
+        summary = summary.reset_index().rename(columns={
+            "simulation_scenario": "Scenario",
+            "stocked_sizes": "Style-size rows in stock",
+            "flagged_sizes": "Rows flagged",
+            "pairs_remaining": "Pairs in stock",
+            "pairs_flagged": "Pairs flagged",
+            "purchase_cost_flagged": "Flagged cost (£)",
+            "sizes_flagged_percent": "Rows flagged (%)",
+        })
+
+        st.dataframe(
+            summary,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Flagged cost (£)": st.column_config.NumberColumn(
+                    format="£%.2f"
+                ),
+                "Rows flagged (%)": st.column_config.NumberColumn(
+                    format="%.1f"
+                ),
+            },
+        )
+
+        st.write(
+            "Check old_steady carefully: its simulated sales are "
+            "infrequent, so a 30-day gap can occur even when demand "
+            "has not stopped. A review alert does not automatically "
+            "justify a discount."
+        )

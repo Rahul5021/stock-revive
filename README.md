@@ -28,6 +28,8 @@ family's footwear business in Nepal.
 - Validation that prevents selling more stock than available
 - Sales analytics with date filtering, daily revenue and gross-profit
   trends, transaction history and CSV export
+- Suggested review actions based on stock age, inactivity and
+  the number of sizes remaining
 
 ## Data
 
@@ -42,6 +44,29 @@ Simulated patterns include:
 
 Simulation labels are excluded from alert calculations.
 They describe how data was generated, not verified dead-stock labels.
+
+## Alert evaluation
+Compared size-level inactivity thresholds of 30, 60 and 90 days.
+
+All thresholds flagged the 25 remaining old-fragmented sizes.
+Alerts for old-steady sizes fell from 27 to 14 to 9, while alerts
+for recent-slow sizes fell from 60 to 10 to 0.
+
+This demonstrates a trade-off between early review and alert volume.
+Simulation scenarios are not verified dead-stock labels, so these
+results do not establish accuracy or an optimal threshold.
+
+The prototype distinguishes three suggested actions:
+- Check display and customer interest
+- Review sales pace and price
+- Clearance review
+
+At the default settings, clearance review requires stock aged
+at least 120 days, no more than two sizes remaining, and at least
+60 days without a sale for the flagged size.
+
+These are starting rules for human review, not automatic
+discount decisions or validated recommendations.
 
 ## Run locally
 
@@ -72,6 +97,9 @@ does not reset an existing database.
 - Recorded two one-pair sales; total stock fell from 2,825 to 2,823.
 - Confirmed an attempt to sell beyond available stock was rejected.
 - Confirmed recorded sales and reduced stock persist after restarting the app.
+- Confirmed all three suggested actions appear in the review CSV:
+  60 display/customer-interest reviews, 37 sales-pace/price reviews
+  and 15 clearance reviews in the tested snapshot.
 
 ## Limitations
 
@@ -87,7 +115,10 @@ does not reset an existing database.
 
 ## Next steps
 
-1. Confirm persistence after restarting the app.
-2. Add sales history and daily revenue/gross-profit reporting.
-3. Evaluate alerts across the synthetic stock patterns.
+1. Review and simplify the code, and document the alert rules.
+2. Add focused automated tests for sale validation, stock updates
+   and review-action rules.
+3. Prepare screenshots and a short portfolio case study covering
+   the business problem, SQL design, analysis and limitations.
 4. Add incoming stock with appropriate batch and cost handling.
+5. Validate the approach using real shop data when available.
